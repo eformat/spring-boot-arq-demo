@@ -4,6 +4,8 @@
             xsi:schemaLocation="http://jboss.org/schema/arquillian
     http://jboss.org/schema/arquillian/arquillian_1_0.xsd">
 
-  <extension qualifier="openshift">
+  <extension qualifier="@arq.qualifier@">
+    <!-- This is needed to apply the right resources manifest either OpenShift/Kubernetes-->
+    <property name="env.config.resource.name">@arq.qualifier@.yml</property>
   </extension>
 </arquillian>

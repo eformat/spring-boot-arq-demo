@@ -11,6 +11,12 @@
   <name>Kubernetes:: Spring Boot:: Arquillian :: Integration Testing Demo</name>
   <description>Demo project for Spring Boot</description>
 
+  <properties>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+    <java.verison>1.8</java.verison>
+  </properties>
+
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
@@ -95,6 +101,13 @@
 
     <dependency>
       <groupId>io.fabric8</groupId>
+      <artifactId>kubernetes-api</artifactId>
+      <version>2.3.5</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.fabric8</groupId>
       <artifactId>kubernetes-client</artifactId>
       <version>2.6.3</version>
       <scope>test</scope>
@@ -116,25 +129,11 @@
         <filtering>true</filtering>
       </testResource>
     </testResources>
+
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>io.fabric8</groupId>
-        <artifactId>fabric8-maven-plugin</artifactId>
-        <version>3.5.30</version>
-        <executions>
-          <execution>
-            <id>fmp</id>
-            <phase>package</phase>
-            <goals>
-              <goal>resource</goal>
-              <goal>build</goal>
-            </goals>
-          </execution>
-        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -156,4 +155,75 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+
+    <profile>
+      <id>kubernetes</id>
+      <properties>
+        <arq.qualifier>kubernetes</arq.qualifier>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+          </plugin>
+          <plugin>
+            <groupId>io.fabric8</groupId>
+            <artifactId>fabric8-maven-plugin</artifactId>
+            <version>3.5.30</version>
+            <executions>
+              <execution>
+                <id>fmp</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>resource</goal>
+                  <goal>build</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <enricher>
+                <config>
+                  <fmp-service>
+                    <type>NodePort</type>
+                  </fmp-service>
+                </config>
+              </enricher>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>openshift</id>
+      <properties>
+        <arq.qualifier>openshift</arq.qualifier>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+          </plugin>
+          <plugin>
+            <groupId>io.fabric8</groupId>
+            <artifactId>fabric8-maven-plugin</artifactId>
+            <version>3.5.30</version>
+            <executions>
+              <execution>
+                <id>fmp</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>resource</goal>
+                  <goal>build</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

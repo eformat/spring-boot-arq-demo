@@ -272,7 +272,12 @@ The updated `pom.xml` is shown below,
         </exclusion>
       </exclusions>
     </dependency>
-
+    <dependency>
+      <groupId>io.fabric8</groupId>
+      <artifactId>kubernetes-api</artifactId>
+      <version>2.3.5</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>io.fabric8</groupId>
       <artifactId>kubernetes-client</artifactId> <6>
@@ -362,10 +367,15 @@ the following content,
             xsi:schemaLocation="http://jboss.org/schema/arquillian
     http://jboss.org/schema/arquillian/arquillian_1_0.xsd">
 
-  <extension qualifier="openshift">
+  <extension qualifier="@arq.qualifier@"> <1>
+    <!-- This is needed to apply the right resources manifest either OpenShift/Kubernetes-->
+    <property name="env.config.resource.name">@arq.qualifier@.yml</property> <2>
   </extension>
 </arquillian>
 ----
+
+<1> Whether its `kubernetes` or `openshift` extension
+<2> Apply the right config based on the `arq.qualifier`
 
 ==== Logging Configuration
 
@@ -398,8 +408,13 @@ to a file called `logback-test.xml` inside $PROJECT_HOME/src/test/resources
 package com.redhat.developers;
 
 import com.jayway.restassured.RestAssured;
+import io.fabric8.kubernetes.api.KubernetesHelper;
+import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.ServicePort;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.openshift.api.model.Route;
 import io.fabric8.openshift.client.OpenShiftClient;
+import lombok.extern.slf4j.Slf4j;
 import org.arquillian.cube.kubernetes.api.Session;
 import org.jboss.arquillian.junit.Arquillian;
 import org.jboss.arquillian.test.api.ArquillianResource;
@@ -407,34 +422,63 @@ import org.junit.Before;
 import org.junit.runner.RunWith;
 
 import java.util.Objects;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@RunWith(Arquillian.class) <1>
-public class GreeterIT extends AbstractGreeterTests{
+@RunWith(Arquillian.class)
+@Slf4j
+public class GreeterIT extends AbstractGreeterTests {
 
     @ArquillianResource
-    OpenShiftClient openShiftClient;
+    KubernetesClient client;
 
     @ArquillianResource
     Session session;
 
-    private String applicationName = "spring-boot-arq-demo"; <2>
+
+    //both application name and service name are same, if you use different modify it
+    private String applicationName = "spring-boot-arq-demo";
 
     @Before
     public void setup() {
-        final Route route = this.openShiftClient.adapt(OpenShiftClient.class)
-                .routes()
+
+        String baseURI;
+
+        /**
+         * Checking whether the host is OpenShift Cluster or Raw Kubernetes Cluster and
+         * based on that we can use {@link Route} or NodePort
+         */
+        if (KubernetesHelper.isOpenShift(client)) {
+            final Route route = this.client.adapt(OpenShiftClient.class).routes()
+                .inNamespace(this.session.getNamespace()).withName(applicationName).get();
+            assertThat(route).isNotNull();
+            baseURI = String.format("http://%s/api/greet", Objects.requireNonNull(route).getSpec().getHost());
+
+        } else {
+
+            //Construct NodePortIP url
+            final String nodeIp = client.getMasterUrl().getHost(); <5>
+
+            final Service service = client.services()
                 .inNamespace(this.session.getNamespace())
                 .withName(applicationName)
-                .get(); <3>
+                .get();
 
-        assertThat(route).isNotNull();
+            Optional<ServicePort> servicePort = service.getSpec().getPorts().stream()
+                .filter(sp -> sp.getPort() == 8080)
+                .findFirst();
 
-        RestAssured.baseURI = String.format("http://%s/api/greet", Objects.requireNonNull(route)
-                .getSpec()
-                .getHost()); <4>
+            assertThat(servicePort.isPresent()).isTrue();
 
+            int nodePort = servicePort.get().getNodePort(); <6>
+            assertThat(nodePort).isBetween(30000, 32767); // verify if it is NodePort Range
+
+            baseURI = String.format("http://%s:%d/api/greet", Objects.requireNonNull(nodeIp), Objects.requireNonNull(nodePort));
+        }
+
+        log.info("Using {} service  URL:{}", applicationName, baseURI);
+        RestAssured.baseURI = baseURI;
     }
 }
 
@@ -444,15 +488,26 @@ public class GreeterIT extends AbstractGreeterTests{
 <2> The Kubernetes/OpenShift deployment name, defaults to maven artifactId
 <3> Get the handle to OpenShift route that is deployed
 <4> Set the `RestAssured.baseURI` to host name of the route
+<5> Get the Kubernetes/OpenShift cluster IP which is also called NodeIp
+<6> Get the NodePort mapping to the default applicaiton port of `8080`
 
 ==== Run Integration Tests
 
+===== Kubernetes
+
 [source,sh]
 ----
-./mvnw clean verify -Denv.init.enabled=true -DenableImageStreamDetection=true <1>
+./mvnw -Pkubernetes clean verify
 ----
 
-<1>
+===== OpenShift
+
+[source,sh]
+----
+./mvnw -Popenshift -Denv.init.enabled=true -DenableImageStreamDetection=true clean verify  <1>
+----
+
+<1> Make the image stream available to all namespaces
 
 [[deploy-app]]
 === Deploy
